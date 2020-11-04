@@ -14,13 +14,11 @@ import android.view.MenuItem
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.auth.FirebaseUser
 import android.support.design.widget.Snackbar
-import com.google.firebase.database.DatabaseError
-import com.google.firebase.database.DataSnapshot
-import com.google.firebase.database.ChildEventListener
-import com.google.firebase.database.DatabaseReference
-import com.google.firebase.database.FirebaseDatabase
 import android.util.Base64
+import android.util.Log
 import android.widget.ListView
+import com.google.firebase.database.*
+import kotlinx.android.synthetic.main.activity_question_detail.*
 
 class MainActivity : AppCompatActivity() ,NavigationView.OnNavigationItemSelectedListener{
 
@@ -32,7 +30,11 @@ class MainActivity : AppCompatActivity() ,NavigationView.OnNavigationItemSelecte
     private lateinit var mQuestionArrayList: ArrayList<Question>
     private lateinit var mAdapter: QuestionsListAdapter
 
+
     private var mGenreRef: DatabaseReference? = null
+    private var mFavoritesRef: DatabaseReference? = null
+    private var mMenuId =0
+
 
     private val mEventListener = object : ChildEventListener{
         override fun onChildAdded(dataSnapshot: DataSnapshot, s: String?) {
@@ -65,6 +67,7 @@ class MainActivity : AppCompatActivity() ,NavigationView.OnNavigationItemSelecte
             val question = Question(title, body, name, uid, dataSnapshot.key ?: "", mGenre, bytes, answerArrayList)
             mQuestionArrayList.add(question)
             mAdapter.notifyDataSetChanged()
+
         }
 
         override fun onChildChanged(dataSnapshot: DataSnapshot, s: String?) {
@@ -159,17 +162,67 @@ class MainActivity : AppCompatActivity() ,NavigationView.OnNavigationItemSelecte
             val intent = Intent(applicationContext, QuestionDetailActivity::class.java)
             intent.putExtra("question", mQuestionArrayList[position])
             startActivity(intent)
+
         }
+
     }
 
     override fun onResume() {
         super.onResume()
         val navigationView = findViewById<NavigationView>(R.id.nav_view)
+        navigationView.setNavigationItemSelectedListener(this)
 
         //1:趣味を既定の選択とする
         if (mGenre == 0){
-            onNavigationItemSelected(navigationView.menu.getItem(0))
+            onNavigationItemSelected(navigationView.menu.getItem(1))
         }
+
+        //お気に入りの表示
+        val user = FirebaseAuth.getInstance().currentUser
+        if (user == null){
+            //お気に入りを非表示にする
+            val menu = navigationView.menu
+            val menuFavorites = menu.findItem(R.id.nav_favorites)
+            menuFavorites.setVisible(false)
+        } else {
+            //お気に入りを表示する
+            val menu = navigationView.menu
+            val menuFavorites = menu.findItem(R.id.nav_favorites)
+            menuFavorites.setVisible(true)
+        }
+
+        val menuFavorites = navigationView.menu.findItem(R.id.nav_favorites)
+        val menuFavoritesId = menuFavorites.itemId
+
+        //お気に入りの表示
+        if (menuFavoritesId == mMenuId){
+            if (mFavoritesRef != null){
+                //Floating Action Buttonを非表示にする
+                fab.hide()
+
+                //質問のリストをクリアしてから再度Adapterにセットし、AdapterをListViewにセットし直す
+                mQuestionArrayList.clear()
+                mAdapter.setQuestionArrayList(mQuestionArrayList)
+                mListView.adapter = mAdapter
+
+                FavoritesList()
+                }
+            } else {
+                //それぞれのジャンルの表示
+                if (mGenreRef != null){
+                    //Floating Action Buttonを表示にする
+                    fab.show()
+                    mGenreRef!!.removeEventListener(mEventListener)
+
+                    //質問のリストをクリアしてから再度Adapterにセットし、AdapterをListViewにセットし直す
+                    mQuestionArrayList.clear()
+                    mAdapter.setQuestionArrayList(mQuestionArrayList)
+                    mListView.adapter = mAdapter
+
+                    mGenreRef = mDatabaseReference.child(ContentsPATH).child(mGenre.toString())
+                    mGenreRef!!.addChildEventListener(mEventListener)
+                }
+            }
     }
 
     override fun onCreateOptionsMenu(menu: Menu): Boolean {
@@ -197,15 +250,23 @@ class MainActivity : AppCompatActivity() ,NavigationView.OnNavigationItemSelecte
         if (id == R.id.nav_hobby){
             mToolbar.title = "趣味"
             mGenre = 1
+            mMenuId = R.id.nav_hobby
         } else if (id == R.id.nav_life){
             mToolbar.title = "生活"
             mGenre = 2
+            mMenuId = R.id.nav_life
         } else if (id == R.id.nav_health){
             mToolbar.title = "健康"
             mGenre = 3
+            mMenuId = R.id.nav_health
         } else if (id == R.id.nav_computer){
             mToolbar.title = "コンピューター"
             mGenre = 4
+            mMenuId = R.id.nav_computer
+        } else if (id == R.id.nav_favorites){
+            mToolbar.title = "お気に入り"
+            mGenre = 5
+            mMenuId = R.id.nav_favorites
         }
 
         val drawer = findViewById<DrawerLayout>(R.id.drawer_layout)
@@ -216,13 +277,60 @@ class MainActivity : AppCompatActivity() ,NavigationView.OnNavigationItemSelecte
         mAdapter.setQuestionArrayList(mQuestionArrayList)
         mListView.adapter = mAdapter
 
-        //選択したジャンルにリスナーを登録する
-        if (mGenreRef != null){
-            mGenreRef!!.removeEventListener(mEventListener)
-        }
-        mGenreRef = mDatabaseReference.child(ContentsPATH).child(mGenre.toString())
-        mGenreRef!!.addChildEventListener(mEventListener)
+        //お気に入りの表示
+        if (mMenuId == R.id.nav_favorites){
+            //Floating Action Buttonを非表示にする
+            fab.hide()
+            FavoritesList()
+        } else {
+            fab.show()
+            if (mGenreRef != null){
+                mGenreRef!!.removeEventListener(mEventListener)
+            }
 
+            //選択したジャンルにリスナーを登録する
+            mGenreRef = mDatabaseReference.child(ContentsPATH).child(mGenre.toString())
+            mGenreRef!!.addChildEventListener(mEventListener)
+
+        }
         return true
     }
+
+    //お気に入りのリストの表示
+    private fun FavoritesList(){
+        if (mFavoritesRef != null){
+            mFavoritesRef!!.removeEventListener(mEventListener)
+        }
+
+        val databaseRef = FirebaseDatabase.getInstance().getReference()
+        databaseRef.addValueEventListener(object : ValueEventListener {
+            override fun onDataChange(dataSnapshot: DataSnapshot) {
+                try {
+                    val user = FirebaseAuth.getInstance().currentUser
+                    val userId = user!!.uid
+                    val map = dataSnapshot.child(FavoritesPATH).value as Map<String, String>
+                    val favoritesMap = map[userId] as Map<String, String>?
+                    if (favoritesMap != null) {
+                        for (key in favoritesMap.keys) {
+                            val temp = favoritesMap[key] as Map<String, String>
+                            val favoritesQuestionId = key
+                            val favoritesGenres = temp["genre"] ?: ""
+
+                            mFavoritesRef = databaseRef.child(ContentsPATH).child(favoritesGenres)
+                            mFavoritesRef!!.orderByKey().equalTo(favoritesQuestionId).addChildEventListener(mEventListener)
+                        }
+
+                    }
+                } catch (e: Exception){
+
+                }
+            }
+
+            override fun onCancelled(dabaseError: DatabaseError) {
+
+            }
+        })
+
+    }
+
 }

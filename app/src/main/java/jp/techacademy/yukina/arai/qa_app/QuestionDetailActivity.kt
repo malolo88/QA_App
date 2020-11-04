@@ -15,6 +15,7 @@ import com.google.firebase.auth.FirebaseUser
 import com.google.firebase.database.*
 import kotlinx.android.synthetic.main.activity_question_detail.*
 import java.util.*
+import kotlin.collections.HashMap
 
 class QuestionDetailActivity : AppCompatActivity() {
 
@@ -96,12 +97,9 @@ class QuestionDetailActivity : AppCompatActivity() {
                 startActivity(intent)
             }
         }
-
         val dataBaseReference = FirebaseDatabase.getInstance().reference
         mAnswerRef = dataBaseReference.child(ContentsPATH).child(mQuestion.genre.toString()).child(mQuestion.questionUid).child(AnswersPATH)
         mAnswerRef.addChildEventListener(mEventListener)
-
-        showFavoriteButton() //お気に入りボタンの表示・非表示
 
         //お気に入りボタンを押した時
         favorite_button.setOnClickListener{v ->
@@ -110,33 +108,36 @@ class QuestionDetailActivity : AppCompatActivity() {
             val userId = user!!.uid
 
             //DatabaseReferenceのインスタンスを取得
-            val favoritRef = FirebaseDatabase.getInstance().getReference()
+            val databaseRef = FirebaseDatabase.getInstance().getReference()
 
             if (mFavorite.hasChild(mQuestion.questionUid)){
                 //お気に入りから削除する
-                favoritRef.child(FavoritesPATH).child(userId).child(mQuestion.questionUid).removeValue()
+                databaseRef.child(FavoritesPATH).child(userId).child(mQuestion.questionUid).removeValue()
                 Snackbar.make(v, "お気に入りから削除しました", Snackbar.LENGTH_LONG).show()
 
                 //ボタンをお気に入り未登録（白）にかえる
-                favoriteButtonWhite()
+                favorite_button.setImageResource(R.drawable.like_white)
             } else {
                 //お気に入りに登録する
-                favoritRef.child(FavoritesPATH).child(userId).child(mQuestion.questionUid).child("genre").setValue(mQuestion.genre)
+                val favoriteRef = databaseRef.child(FavoritesPATH).child(userId).child(mQuestion.questionUid)
+                val data = HashMap<String, String>()
+                data["genre"] = mQuestion.genre.toString()
+                favoriteRef.setValue(data)
                 Snackbar.make(v, "お気に入りに登録しました", Snackbar.LENGTH_LONG).show()
 
                 //ボタンをお気に入り登録済み（ピンク）にかえる
-                favoriteButtonPink()
+                favorite_button.setImageResource(R.drawable.like_pink)
             }
+        }
+
+        if (mQuestion.genre == 5){
+            fab.hide()
         }
     }
 
-
     override fun onResume() {
         super.onResume()
-        showFavoriteButton()
-    }
 
-    private fun showFavoriteButton(){
         //ユーザーがログイン済みでなければお気に入りボタンを非表示にする
         // ログイン済みのユーザーを取得する
         val user = FirebaseAuth.getInstance().currentUser
@@ -152,32 +153,18 @@ class QuestionDetailActivity : AppCompatActivity() {
                     val userId = user!!.uid
                     mFavorite = dataSnapshot.child(FavoritesPATH).child(userId)
 
-                   if (mFavorite.hasChild(mQuestion.questionUid)){
-                       //ボタンをお気に入り登録済み（ピンク）にかえる
-                       favoriteButtonPink()
+                    if (mFavorite.hasChild(mQuestion.questionUid)){
+                        //ボタンをお気に入り登録済み（ピンク）にかえる
+                        favorite_button.setImageResource(R.drawable.like_pink)
                     } else {
-                       //ボタンをお気に入り未登録（白）にかえる
-                       favoriteButtonWhite()
+                        //ボタンをお気に入り未登録（白）にかえる
+                        favorite_button.setImageResource(R.drawable.like_white)
                     }
                 }
-
                 override fun onCancelled(p0: DatabaseError) {
 
                 }
             })
         }
     }
-
-    //お気に入りを登録済みのボタンにする
-    private fun favoriteButtonPink(){
-        favorite_button.visibility = View.INVISIBLE
-        favorite_button2.visibility = View.VISIBLE
-    }
-
-    //お気に入りを未登録のボタンにする
-    private fun favoriteButtonWhite(){
-        favorite_button.visibility = View.VISIBLE
-        favorite_button2.visibility = View.INVISIBLE
-    }
-
 }

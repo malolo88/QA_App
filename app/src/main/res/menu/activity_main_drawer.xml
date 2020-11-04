@@ -3,6 +3,9 @@
 
     <group android:checkableBehavior="single">
         <item
+            android:id="@+id/nav_favorites"
+            android:title="お気に入り"/>
+        <item
             android:id="@+id/nav_hobby"
             android:title="趣味"/>
         <item
